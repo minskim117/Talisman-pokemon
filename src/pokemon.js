@@ -84,10 +84,3 @@ export async function pokemonDetail(name) {
     artwork: p.sprites.other?.['official-artwork']?.front_default || p.sprites.front_default,
   };
 }
-
-// 일러스트 PNG를 받아 이미지 편집 참고용 Buffer로 돌려준다
-export async function fetchArtwork(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`포켓몬 일러스트를 받지 못했습니다 (${res.status})`);
-  return Buffer.from(await res.arrayBuffer());
-}

@@ -250,6 +250,10 @@ timePicker.addEventListener('keydown', (e) => {
 });
 
 async function post(url, body) {
+  return (await postRaw(url, body)).data;
+}
+
+async function postRaw(url, body) {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -257,7 +261,15 @@ async function post(url, body) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `요청 실패 (${res.status})`);
-  return data;
+  return { res, data };
+}
+
+// /api/image 는 OpenAI 이미지 응답을 그대로 넘겨주고, A/B 결과는 X-Talisman-Mode 헤더로 알려준다
+async function requestImage(body) {
+  const { res, data } = await postRaw('/api/image', body);
+  const b64 = data.data?.[0]?.b64_json;
+  if (!b64) throw new Error('이미지가 생성되지 않았습니다.');
+  return { image: `data:image/png;base64,${b64}`, mode: res.headers.get('X-Talisman-Mode') };
 }
 
 function showError(msg) {
@@ -354,6 +366,7 @@ function renderPokemon(p) {
 function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    img.crossOrigin = 'anonymous'; // 외부 일러스트를 캔버스에 합성해도 저장할 수 있게
     img.onload = () => resolve(img);
     img.onerror = reject;
     img.src = src;
@@ -418,7 +431,8 @@ form.addEventListener('submit', async (e) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     try {
-      const { image, mode, artwork } = await post('/api/image', { reading: data.reading, pokemon: data.pokemon, element: data.element.name });
+      const { image, mode } = await requestImage({ reading: data.reading, pokemon: data.pokemon, element: data.element.name });
+      const artwork = data.pokemon.artwork;
       const img = new Image();
       img.src = image;
       img.alt = `${data.reading.talismanName} 부적 이미지`;
@@ -429,6 +443,7 @@ form.addEventListener('submit', async (e) => {
       let download = image;
       if (mode === 'overlay' && artwork) {
         const stamp = new Image();
+        stamp.crossOrigin = 'anonymous';
         stamp.src = artwork;
         stamp.className = 'stamp';
         stamp.style.setProperty('--glow', GLOW[data.element.name]);

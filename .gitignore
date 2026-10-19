@@ -3,3 +3,7 @@ node_modules/
 logs/
 .claude/
 .DS_Store
+.wrangler/
+.dev.vars*
+.env*
+!.env.example
