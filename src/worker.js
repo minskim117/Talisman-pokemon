@@ -7,44 +7,6 @@ import KoreanLunarCalendar from 'korean-lunar-calendar';
 
 const OPENAI = 'https://api.openai.com/v1';
 
-// ---- IP 당 하루 생성 횟수 제한 ----
-// A 방식(포켓몬 그려 넣기) 성공만 1회로 센다. B 방식·실패는 세지 않는다.
-// 하루는 한국 시간 자정 기준. 관리자 IP(secret ADMIN_IPS)는 제한 없음.
-const DAILY_LIMIT = 70;
-
-function clientIp(request) {
-  return request.headers.get('CF-Connecting-IP') || 'unknown';
-}
-
-function isAdmin(request, env) {
-  const admins = String(env.ADMIN_IPS || '').split(',').map((s) => s.trim()).filter(Boolean);
-  return admins.includes(clientIp(request));
-}
-
-function usageKey(request) {
-  const kstDate = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
-  return `usage:${kstDate}:${clientIp(request)}`;
-}
-
-// 남은 횟수 (관리자는 null = 무제한)
-async function remainingToday(request, env) {
-  if (isAdmin(request, env)) return null;
-  const used = Number(await env.USAGE.get(usageKey(request))) || 0;
-  return Math.max(0, DAILY_LIMIT - used);
-}
-
-async function countUsage(request, env) {
-  if (isAdmin(request, env)) return;
-  const key = usageKey(request);
-  const used = Number(await env.USAGE.get(key)) || 0;
-  // 이틀 뒤 자동 삭제 (KV 최소 보관 시간 60초 이상)
-  await env.USAGE.put(key, String(used + 1), { expirationTtl: 2 * 24 * 3600 });
-}
-
-function limitReached() {
-  return json({ error: `부적은 하루 ${DAILY_LIMIT}번까지 받을 수 있어요. 내일 다시 와주세요.`, remaining: 0 }, 429);
-}
-
 const BASE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -182,9 +144,6 @@ function lunarToSolar(date) {
 }
 
 async function handleReading(request, env) {
-  // 풀이 비용도 아끼도록, 오늘 횟수를 다 썼으면 풀이 전에 막는다
-  const remaining = await remainingToday(request, env);
-  if (remaining === 0) return limitReached();
   const { birthDate, birthTime, calendar } = await request.json().catch(() => ({}));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate || '')) {
     return json({ error: '생년월일을 입력해주세요.' }, 400);
@@ -227,7 +186,7 @@ async function handleReading(request, env) {
   const from = reading.fillEffect.indexOf('수호 포켓몬');
   if (from > 0) reading.fillEffect = reading.fillEffect.slice(from);
   const pokemon = { ...(await pokemonDetail(reading.pokemon.name)), element, reason: reading.pokemon.reason };
-  return json({ saju, reading, pokemon, element: { name: element, ...ELEMENTS[element] }, birth: { label: birthLabel, solar: solarDate }, remaining });
+  return json({ saju, reading, pokemon, element: { name: element, ...ELEMENTS[element] }, birth: { label: birthLabel, solar: solarDate } });
 }
 
 // 이미지 응답은 OpenAI JSON 을 그대로 흘려보내고, A/B 결과는 헤더로 알린다
@@ -241,8 +200,6 @@ async function handleImage(request, env) {
   const { reading, pokemon, element } = await request.json().catch(() => ({}));
   const el = ELEMENTS[element];
   if (!reading?.visual || !el) return json({ error: '부적 정보가 없습니다.' }, 400);
-  // /api/image 를 직접 부르는 경우도 막는다
-  if (await remainingToday(request, env) === 0) return limitReached();
 
   const clean = (t) => stripNames(t, pokemon);
   const prompt = [
@@ -280,7 +237,6 @@ async function handleImage(request, env) {
     const res = await fetch(`${OPENAI}/images/edits`, { method: 'POST', headers: auth, body: form });
     if (res.ok) {
       logGuardian(pokemon, element, 'drawn');
-      await countUsage(request, env); // A 성공만 1회 차감
       return passImage(res, 'drawn');
     }
     const err = await openaiError(res);

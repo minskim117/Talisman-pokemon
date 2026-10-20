@@ -17,10 +17,6 @@
 		"IMAGE_SIZE": "1024x1536",
 		"IMAGE_QUALITY": "medium"
 	},
-	// IP별 하루 부적 생성 횟수(A 방식 성공만 센다). 관리자 IP 는 secret ADMIN_IPS (쉼표로 구분)
-	"kv_namespaces": [
-		{ "binding": "USAGE", "id": "14aa79d0a06043ffb2553a01a87d20bb" }
-	],
 	// 포켓몬별 A/B 결과 로그(console.log)를 대시보드 Workers Logs 에서 볼 수 있게 한다
 	"observability": {
 		"enabled": true
