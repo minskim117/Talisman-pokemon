@@ -10,7 +10,7 @@ const OPENAI = 'https://api.openai.com/v1';
 // ---- IP 당 하루 생성 횟수 제한 ----
 // A 방식(포켓몬 그려 넣기) 성공만 1회로 센다. B 방식·실패는 세지 않는다.
 // 하루는 한국 시간 자정 기준. 관리자 IP(secret ADMIN_IPS)는 제한 없음.
-const DAILY_LIMIT = 5;
+const DAILY_LIMIT = 70;
 
 function clientIp(request) {
   return request.headers.get('CF-Connecting-IP') || 'unknown';
