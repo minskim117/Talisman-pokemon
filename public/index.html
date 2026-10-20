@@ -45,7 +45,13 @@
 
     <form id="form" class="card frame">
       <div class="field">
-        <label for="birthDate">생년월일 (양력)</label>
+        <div class="label-row">
+          <label for="birthDate">생년월일</label>
+          <div class="calendar-choice" role="radiogroup" aria-label="달력 종류">
+            <label class="radio"><input type="radio" name="calendar" value="solar" checked /> 양력</label>
+            <label class="radio"><input type="radio" name="calendar" value="lunar" /> 음력</label>
+          </div>
+        </div>
         <div class="datefield">
           <input type="text" id="birthDate" name="birthDate" required inputmode="numeric" autocomplete="bday"
             placeholder="YYYY-MM-DD" pattern="\d{4}-\d{2}-\d{2}" title="예: 1990-05-15" />
@@ -59,9 +65,9 @@
       </div>
       <div class="field">
         <label for="birthTime">태어난 시간 <em>(선택)</em></label>
-        <div class="timefield">
-          <input type="text" id="birthTime" name="birthTime" inputmode="numeric"
-            placeholder="HH:MM" pattern="([01]\d|2[0-3]):[0-5]\d" title="예: 13:30" />
+        <div class="timefield empty">
+          <input type="time" id="birthTime" name="birthTime" />
+          <span class="time-ph" aria-hidden="true">AM HH:MM</span>
           <button type="button" id="timeBtn" class="cal-btn" aria-label="시간 선택 열기" aria-haspopup="dialog">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <circle cx="12" cy="13" r="8" /><path d="M12 9v4l3 2" />
@@ -84,10 +90,8 @@
         <p class="hanja" id="rHanja"></p>
         <h2 id="rName"></h2>
         <span class="divider" data-divider="moon"></span>
-        <h3>성격 풀이</h3>
-        <p id="rPersonality"></p>
         <h3>기운 풀이</h3>
-        <p id="rLacking"></p>
+        <p id="rEnergy"></p>
         <h3>부적의 힘</h3>
         <p id="rEffect"></p>
         <div class="guardian">

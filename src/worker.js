@@ -3,6 +3,7 @@
 // (fetch 를 기다리는 시간은 CPU 시간에 포함되지 않는다)
 import { computeSaju } from './saju.js';
 import { candidatesFor, pokemonDetail, weakestElement } from './pokemon.js';
+import KoreanLunarCalendar from 'korean-lunar-calendar';
 
 const OPENAI = 'https://api.openai.com/v1';
 
@@ -13,7 +14,7 @@ const BASE_SCHEMA = {
     talismanName: { type: 'string', description: '부적 이름 (한글, 예: 재물운 상승 부적)' },
     summary: { type: 'string', description: '한 줄 요약' },
     personalityReading: { type: 'string', description: '타고난 기운으로 본 성격 해석 2문장, 공백 포함 85자 이내 (화면에서 3줄)' },
-    lackingEnergy: { type: 'string', description: '가장 부족한 오행이 무엇이고, 그 기운이 부족해서 생기기 쉬운 모습 2~3문장' },
+    lackingEnergy: { type: 'string', description: '성격 풀이 바로 뒤에 이어지는 글. 가장 부족한 오행이 무엇이고, 그 기운이 부족해서 생기기 쉬운 모습 1~2문장' },
     fillEffect: { type: 'string', description: '반드시 "수호 포켓몬 <한국어 이름>의"로 시작해서, 그 포켓몬의 기운이 부족한 기운을 채워 주는 좋은 효과 1~2문장' },
     visual: {
       type: 'object',
@@ -132,13 +133,29 @@ function outputText(body) {
     .join('');
 }
 
+// 음력 생일을 양력으로 바꾼다 (한국천문연구원 기준 음력표). 없는 날짜면 null
+// 윤달 여부는 받지 않으므로 평달로 보고, 평달에 없는 날짜(예: 윤달에만 있는 30일)일 때만 윤달로 계산한다
+function lunarToSolar(date) {
+  const [y, m, d] = date.split('-').map(Number);
+  const cal = new KoreanLunarCalendar();
+  if (!cal.setLunarDate(y, m, d, false) && !cal.setLunarDate(y, m, d, true)) return null;
+  const s = cal.getSolarCalendar();
+  return `${s.year}-${String(s.month).padStart(2, '0')}-${String(s.day).padStart(2, '0')}`;
+}
+
 async function handleReading(request, env) {
-  const { birthDate, birthTime } = await request.json().catch(() => ({}));
+  const { birthDate, birthTime, calendar } = await request.json().catch(() => ({}));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate || '')) {
     return json({ error: '생년월일을 입력해주세요.' }, 400);
   }
+  const lunar = calendar === 'lunar';
+  const solarDate = lunar ? lunarToSolar(birthDate) : birthDate;
+  if (!solarDate) {
+    return json({ error: `음력 ${birthDate}은(는) 없는 날짜예요. 날짜를 확인해주세요.` }, 400);
+  }
+  const birthLabel = lunar ? `음력 ${birthDate} = 양력 ${solarDate}` : `양력 ${birthDate}`;
 
-  const saju = computeSaju(birthDate, birthTime);
+  const saju = computeSaju(solarDate, birthTime);
   const element = weakestElement(saju.elementCounts);
   const candidates = candidatesFor(element);
   const res = await fetch(`${OPENAI}/responses`, {
@@ -155,7 +172,7 @@ async function handleReading(request, env) {
         '부족한 오행을 채워줄 수호 포켓몬도 후보 중에서 하나 골라, 효과 설명에 자연스럽게 녹여주세요. ' +
         '한국어 글에서 포켓몬은 반드시 한국어 공식 이름(후보 목록의 괄호 앞 이름)으로만 쓰고, 영어 이름은 pokemon.name 필드에만 쓰세요.',
       input:
-        `생년월일(양력): ${birthDate}${birthTime ? ` ${birthTime}` : ''}\n` +
+        `생년월일: ${birthLabel}${birthTime ? ` ${birthTime}` : ''}\n` +
         `\n[계산된 사주]\n${describeSaju(saju)}\n` +
         `가장 부족한 오행: ${element}\n` +
         `수호 포켓몬 후보(${element} 기운, 한국어 이름(영문)): ${candidates.map((c) => `${c.ko}(${c.name})`).join(', ')}`,
@@ -169,7 +186,7 @@ async function handleReading(request, env) {
   const from = reading.fillEffect.indexOf('수호 포켓몬');
   if (from > 0) reading.fillEffect = reading.fillEffect.slice(from);
   const pokemon = { ...(await pokemonDetail(reading.pokemon.name)), element, reason: reading.pokemon.reason };
-  return json({ saju, reading, pokemon, element: { name: element, ...ELEMENTS[element] } });
+  return json({ saju, reading, pokemon, element: { name: element, ...ELEMENTS[element] }, birth: { label: birthLabel, solar: solarDate } });
 }
 
 // 이미지 응답은 OpenAI JSON 을 그대로 흘려보내고, A/B 결과는 헤더로 알린다
@@ -230,10 +247,10 @@ async function handleImage(request, env) {
   }
 
   // B: 부적만 생성하고, 일러스트는 화면에서 겹쳐 보여준다.
-  // 일러스트가 놓일 아래쪽 가운데(.stamp 위치: 폭 45%, 높이 약 79% 지점)를 받침 자리로 비워 둔다
+  // 일러스트가 놓일 자리(.stamp 위치: 폭 62%, 가운데가 위에서 64%)를 받침 자리로 비워 둔다
   const pedestal = artwork
-    ? `\nReserved area: in the lower center, centered at about 79% of the image height, leave an empty round glowing halo ` +
-      `about 50% of the image width, with a soft ${el.ink} radiant aura and an ornate lotus-and-cloud pedestal beneath it; ` +
+    ? `\nReserved area: below the big character, centered horizontally and at about 64% of the image height, leave an empty round glowing halo ` +
+      `about 65% of the image width, with a soft ${el.ink} radiant aura and an ornate lotus-and-cloud pedestal beneath it; ` +
       'keep the inside of the halo plain and free of motifs, as a stage for a guardian figure added later'
     : '';
   const res = await fetch(`${OPENAI}/images/generations`, {

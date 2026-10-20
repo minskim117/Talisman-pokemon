@@ -9,5 +9,8 @@
   },
   "devDependencies": {
     "wrangler": "^4.151.2"
+  },
+  "dependencies": {
+    "korean-lunar-calendar": "^0.4.0"
   }
 }
